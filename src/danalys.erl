@@ -45,12 +45,18 @@ format_walked_data ({Data, {Sum, _}}) ->
   [ io:format("~s | ~f | ~f | ~s | ~2s | ~s~f~n", tuple_to_list(Chunk))
     || Chunk <- Data ].
 
-gen_model (0, _) ->
+gen_models (Dir, Count, Length) ->
+  case filelib:ensure_dir(Dir) of
+    ok   -> gen_model(Dir, Count, Length);
+    Else -> throw(Else)
+  end.
+
+gen_model (_, 0, _) ->
   ok;
-gen_model (Count, Length) when is_integer(Count) andalso
-                               Count > 0 andalso
-                               is_integer(Length) andalso
-                               Length > 0 ->
+gen_model (Dir, Count, Length) when is_integer(Count) andalso
+                                    Count > 0 andalso
+                                    is_integer(Length) andalso
+                                    Length > 0 ->
   Filename = lists:flatten(io_lib:format("model_~10..0b", [Count])),
   Data =
     lists:map(fun (_) ->
@@ -64,10 +70,10 @@ gen_model (Count, Length) when is_integer(Count) andalso
                   end,
                 io_lib:format("yyyy/mm/dd,~s~n", [Step])
               end, lists:seq(1, Length)),
-  {ok, Fd} = file:open(Filename, write),
+  {ok, Fd} = file:open(Dir ++ "/" ++ Filename, write),
   file:write(Fd, Data),
   file:close(Fd),
-  gen_model (Count - 1, Length).
+  gen_model (Dir, Count - 1, Length).
 
 read_model (Filename) ->
   {ok, Binary} = file:read_file(Filename),
@@ -119,10 +125,10 @@ test_model (Model, Data) when length(Model) == length(Data) ->
 
 test () ->
   try
-    {ok, Files} = file:list_dir("."),
+    {ok, Files} = file:list_dir("/tmp/models/"),
     Data = read_data("example.csv"),
     [ begin
-        Model = read_model(File),
+        Model = read_model("/tmp/models/" ++ File),
         WD = apply_model(Model, Data),
         format_walked_data(WD),
         case io:get_line("next> ") of
@@ -155,7 +161,7 @@ perf_test (Opts) ->
       true -> ok;
       _ ->
         ?LOG("Clear previously generated model(s)..."),
-        os:cmd("rm -f model_*")
+        os:cmd("rm -f /tmp/models/model_*")
     end,
     case OnlyClear of
       true -> throw(stop);
@@ -168,18 +174,18 @@ perf_test (Opts) ->
       true -> ok;
       _ ->
         ?LOG("Generating ~b model(s)...", [ModelsCount]),
-        gen_model(ModelsCount, Length)
+        gen_models("/tmp/models/", ModelsCount, Length)
     end,
     case OnlyGenerate of
       true -> throw(stop);
       _    -> ok
     end,
     ?LOG("Start applying model(s) at ~s", [ts()]),
-    {ok, Files} = file:list_dir("."),
+    {ok, Files} = file:list_dir("/tmp/models"),
     {OK, Bad, TheWorst, TheBest} =
       lists:foldl(fun
                     (File = "model_" ++ _, {OKAcc, BadAcc, Worst, Best}) ->
-                      Prof = test_model(read_model(File), Data),
+                      Prof = test_model(read_model("/tmp/models/" ++ File), Data),
                       {NewOKAcc, NewBadAcc} =
                         case Prof > 0 of
                           true -> {OKAcc + 1, BadAcc};
