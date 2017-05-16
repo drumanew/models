@@ -4,6 +4,13 @@
 %% API
 -export ([start_link/0]).
 -export ([set_data_file/1,
+          get_data_file/0,
+
+          set_max_mem_size/1,
+          set_max_mem_size/2,
+          get_max_mem_size/0,
+          reset_max_mem_size/0,
+
           add_models_dir/1,
           add_model/1,
           add_models/1]).
@@ -16,10 +23,16 @@
           terminate/2,
           code_change/3]).
 
+-define (MAX_MEM_SIZE_DEF, 10*1024*1024). %% 100 MBytes
+
 -record(state, { datafile,
                  data,
+
+                 max_size = ?MAX_MEM_SIZE_DEF,
+
                  pending_dirs     = gb_sets:new(),
                  pending_files    = gb_sets:new(),
+
                  loaded_data      = [],
                  loaded_data_size = 0 }).
 
@@ -33,6 +46,27 @@ start_link () ->
 
 set_data_file (FileName) ->
   gen_server:call(?MODULE, {set_data_file, FileName}).
+
+get_data_file () ->
+  gen_server:call(?MODULE, get_data_file).
+
+set_max_mem_size (Bytes) ->
+  gen_server:call(?MODULE, {set_max_mem_size, Bytes}).
+
+set_max_mem_size (Count, 'b') ->
+  set_max_mem_size(Count);
+set_max_mem_size (Count, 'kb') ->
+  set_max_mem_size(Count * 1024);
+set_max_mem_size (Count, 'mb') ->
+  set_max_mem_size(Count * 1024 * 1024);
+set_max_mem_size (Count, 'gb') ->
+  set_max_mem_size(Count * 1024 * 1024 * 1024).
+
+get_max_mem_size () ->
+  gen_server:call(?MODULE, get_max_mem_size).
+
+reset_max_mem_size () ->
+  set_max_mem_size(?MAX_MEM_SIZE_DEF).
 
 add_models_dir (DirName) ->
   gen_server:call(?MODULE, {add_models_dir, DirName}).
@@ -58,6 +92,12 @@ handle_call ({set_data_file, FileName}, _From, State) ->
                       _:Error -> {{error, Error}, State}
                     end,
   {reply, Reply, State0};
+handle_call (get_data_file, _From, State = #state{ datafile = FileName }) ->
+  {reply, FileName, State};
+handle_call ({set_max_mem_size, Bytes}, _From, State) ->
+  {reply, ok, State#state{ max_size = Bytes }};
+handle_call (get_max_mem_size, _From, State = #state{ max_size = Bytes }) ->
+  {reply, Bytes, State};
 handle_call ({add_models_dir, DirName},
              _From,
              State = #state{ pending_dirs = PD }) ->
