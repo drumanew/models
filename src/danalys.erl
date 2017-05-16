@@ -89,27 +89,6 @@ read_model (Filename) ->
            end} || {Date, Step} <- AllData ].
 
 apply_model (Model, Data) when length(Model) == length(Data) ->
-  lists:mapfoldl(fun ({Date, Open, Close}, {Sum, [{_, Step} | Rest]}) ->
-                   Good = case Close > Open of
-                            true -> '+';
-                            _    -> '-'
-                          end,
-                   {Do, Diff} = case Step of
-                                  1 -> {'+', Close - Open};
-                                  2 -> {'++', 2*(Close - Open)};
-                                  3 -> {'-', Open - Close};
-                                  4 -> {'--', 2*(Open - Close)};
-                                  5 -> {'+-', 0.0}
-                                end,
-                   Sign = case Diff >= 0 of
-                            true -> "+";
-                            _    -> ""
-                          end,
-                   {{Date, Open, Close, Good, Do, Sign, Diff},
-                    {Sum + Diff, Rest}}
-                 end, {0, Model}, Data).
-
-test_model (Model, Data) when length(Model) == length(Data) ->
   {Perf, _} =
     lists:foldl(fun ({_Date, Open, Close}, {Sum, [{_, Step} | Rest]}) ->
                      Diff = case Step of
@@ -122,25 +101,6 @@ test_model (Model, Data) when length(Model) == length(Data) ->
                      {Sum + Diff, Rest}
                    end, {0, Model}, Data),
   Perf.
-
-test () ->
-  try
-    {ok, Files} = file:list_dir("/tmp/models/"),
-    Data = read_data("example.csv"),
-    [ begin
-        Model = read_model("/tmp/models/" ++ File),
-        WD = apply_model(Model, Data),
-        format_walked_data(WD),
-        case io:get_line("next> ") of
-          "\n" -> ok;
-          _    -> throw(stopped)
-        end
-      end || File = "model_" ++ _ <- Files ],
-    ok
-  catch
-    throw:stopped -> stopped;
-    _:Error       -> Error
-  end.
 
 perf_test () ->
   perf_test([]).
@@ -185,7 +145,7 @@ perf_test (Opts) ->
     {OK, Bad, TheWorst, TheBest} =
       lists:foldl(fun
                     (File = "model_" ++ _, {OKAcc, BadAcc, Worst, Best}) ->
-                      Prof = test_model(read_model("/tmp/models/" ++ File), Data),
+                      Prof = apply_model(read_model("/tmp/models/" ++ File), Data),
                       {NewOKAcc, NewBadAcc} =
                         case Prof > 0 of
                           true -> {OKAcc + 1, BadAcc};

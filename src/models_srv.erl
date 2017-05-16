@@ -11,6 +11,10 @@
           get_max_mem_size/0,
           reset_max_mem_size/0,
 
+          set_max_workers/1,
+          get_max_workers/0,
+          reset_max_workers/0,
+
           add_models_dir/1,
           add_model/1,
           add_models/1]).
@@ -24,14 +28,16 @@
           code_change/3]).
 
 -define (MAX_MEM_SIZE_DEF, 10*1024*1024). %% 100 MBytes
+-define (MAX_WORKERS_DEF, 10).
 
 -record(state, { datafile,
                  data,
 
-                 max_size = ?MAX_MEM_SIZE_DEF,
+                 max_size    = ?MAX_MEM_SIZE_DEF,
+                 max_workers = ?MAX_WORKERS_DEF,
 
-                 pending_dirs     = gb_sets:new(),
-                 pending_files    = gb_sets:new(),
+                 pending_dirs  = gb_sets:new(),
+                 pending_files = gb_sets:new(),
 
                  loaded_data      = [],
                  loaded_data_size = 0 }).
@@ -44,13 +50,17 @@
 start_link () ->
   gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
-set_data_file (FileName) ->
+%---------------------------------------------------------------------
+
+set_data_file (FileName) when is_list(FileName) ->
   gen_server:call(?MODULE, {set_data_file, FileName}).
 
 get_data_file () ->
   gen_server:call(?MODULE, get_data_file).
 
-set_max_mem_size (Bytes) ->
+%---------------------------------------------------------------------
+
+set_max_mem_size (Bytes) when is_integer(Bytes) andalso Bytes > 0 ->
   gen_server:call(?MODULE, {set_max_mem_size, Bytes}).
 
 set_max_mem_size (Count, 'b') ->
@@ -68,14 +78,28 @@ get_max_mem_size () ->
 reset_max_mem_size () ->
   set_max_mem_size(?MAX_MEM_SIZE_DEF).
 
-add_models_dir (DirName) ->
+%---------------------------------------------------------------------
+
+set_max_workers (Count) when is_integer(Count) andalso Count > 0 ->
+  gen_server:call(?MODULE, {set_max_workers, Count}).
+
+get_max_workers () ->
+  gen_server:call(?MODULE, get_max_workers).
+
+reset_max_workers () ->
+  set_max_workers(?MAX_WORKERS_DEF).
+
+%---------------------------------------------------------------------
+
+add_models_dir (DirName) when is_list(DirName) ->
   gen_server:call(?MODULE, {add_models_dir, DirName}).
 
-add_model (FileName) ->
+add_model (FileName) when is_list(FileName) ->
   gen_server:call(?MODULE, {add_model, FileName}).
 
-add_models (WildCard) ->
-  gen_server:call(?MODULE, {add_models, WildCard}).
+add_models (WildCard) when is_list(WildCard) ->
+  Files = gb_sets:from_list(filelib:wildcard(WildCard)),
+  gen_server:call(?MODULE, {add_models, Files}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -83,6 +107,8 @@ add_models (WildCard) ->
 
 init ([]) ->
   {ok, #state{}}.
+
+%---------------------------------------------------------------------
 
 handle_call ({set_data_file, FileName}, _From, State) ->
   {Reply, State0} = try danalys:read_data(FileName) of
@@ -94,10 +120,23 @@ handle_call ({set_data_file, FileName}, _From, State) ->
   {reply, Reply, State0};
 handle_call (get_data_file, _From, State = #state{ datafile = FileName }) ->
   {reply, FileName, State};
+
+%---------------------------------------------------------------------
+
 handle_call ({set_max_mem_size, Bytes}, _From, State) ->
   {reply, ok, State#state{ max_size = Bytes }};
 handle_call (get_max_mem_size, _From, State = #state{ max_size = Bytes }) ->
   {reply, Bytes, State};
+
+%---------------------------------------------------------------------
+
+handle_call ({set_max_workers, Count}, _From, State) ->
+  {reply, ok, State#state{ max_workers = Count }};
+handle_call (get_max_workers, _From, State = #state{ max_workers = Count }) ->
+  {reply, Count, State};
+
+%---------------------------------------------------------------------
+
 handle_call ({add_models_dir, DirName},
              _From,
              State = #state{ pending_dirs = PD }) ->
@@ -116,23 +155,33 @@ handle_call ({add_model, FileName},
       _    -> {{error, enoent}, State}
     end,
   {reply, Reply, State0};
-handle_call ({add_models, WildCard},
+handle_call ({add_models, Files},
              _From,
              State = #state{ pending_files = PD }) ->
-  Files = gb_sets:from_list(filelib:wildcard(WildCard)),
   State0 = State#state{ pending_files = gb_sets:union(Files, PD) },
   {reply, ok, State0};
+
+%---------------------------------------------------------------------
+
 handle_call (_Request, _From, State) ->
   {reply, ignored, State}.
+
+%---------------------------------------------------------------------
 
 handle_cast (_Msg, State) ->
   {noreply, State}.
 
+%---------------------------------------------------------------------
+
 handle_info (_Info, State) ->
   {noreply, State}.
 
+%---------------------------------------------------------------------
+
 terminate (_Reason, _State) ->
   ok.
+
+%---------------------------------------------------------------------
 
 code_change (_OldVsn, State, _Extra) ->
   {ok, State}.
