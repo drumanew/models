@@ -364,7 +364,7 @@ add_stats (File, Perf, State = #state{ good_models = Good,
                                        worst_model = {WF, WP} }) ->
   {Good0, Bad0} = case Perf > 0 of
                     true -> {Good + 1, Bad};
-                    _    -> {Bad + 1, Good}
+                    _    -> {Good, Bad + 1}
                   end,
   BestModel0 = case Perf > BP of
                  true -> {File, Perf};
