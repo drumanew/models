@@ -183,14 +183,14 @@ handle_call (_Request, _From, State) ->
 %---------------------------------------------------------------------
 
 handle_cast ({report, From, Perf}, State = #state{ workers = Workers }) ->
-  State0 = case gb_trees:lookup(From, Workers) of
+  State1 = case gb_trees:lookup(From, Workers) of
              {value, File} ->
                Workers0 = gb_trees:delete(From, Workers),
                State0 = add_stats(File, Perf, State#state{ workers = Workers0 }),
                reshedule(State0);
              _ -> State
            end,
-  {noreply, State0};
+  {noreply, State1};
 handle_cast (_Msg, State) ->
   {noreply, State}.
 
