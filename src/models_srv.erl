@@ -210,6 +210,14 @@ handle_call ({get_stats, _}, _From, State) ->
   {reply, undefined, State};
 %---------------------------------------------------------------------
 
+handle_call (clear_stats, _From, State) ->
+  {reply, ok, State#state{ good_models = 0,
+                           bad_models = 0,
+                           best_model = undefined,
+                           worst_model = undefined} };
+
+%---------------------------------------------------------------------
+
 handle_call (_Request, _From, State) ->
   {reply, ignored, State}.
 
