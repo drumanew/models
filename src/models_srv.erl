@@ -19,6 +19,8 @@
           add_model/1,
           add_models/1]).
 
+-export ([run_test/0]).
+
 %% gen_server callbacks
 -export ([init/1,
           handle_call/3,
@@ -41,6 +43,13 @@
 
                  loaded_data      = gb_trees:empty(),
                  loaded_data_size = 0,
+
+                 workers = gb_trees:empty(),
+
+                 good_models = 0,
+                 bad_models  = 0,
+                 best_model,
+                 worst_model,
 
                  timer }).
 
@@ -173,6 +182,15 @@ handle_call (_Request, _From, State) ->
 
 %---------------------------------------------------------------------
 
+handle_cast ({report, From, Perf}, State = #state{ workers = Workers }) ->
+  State0 = case gb_trees:lookup(From, Workers) of
+             {value, File} ->
+               Workers0 = gb_trees:delete(From, Workers),
+               State0 = add_stats(File, Perf, State#state{ workers = Workers0 }),
+               reshedule(State0);
+             _ -> State
+           end,
+  {noreply, State0};
 handle_cast (_Msg, State) ->
   {noreply, State}.
 
@@ -239,7 +257,8 @@ read_files (State = #state{ loaded_data_size = S,
                             pending_files = PF }) ->
   {File, PF0} = gb_sets:take_smallest(PF),
   Model = danalys:read_model(File),
-  NewSize = size(term_to_binary(Model)) + S,
+  ModelSize = size(term_to_binary(Model)),
+  NewSize = ModelSize + S,
   case NewSize > M of
     true -> State;
     _ ->
@@ -250,5 +269,59 @@ read_files (State = #state{ loaded_data_size = S,
 
 %---------------------------------------------------------------------
 
-update_workers (State) ->
-  State.
+update_workers (State = #state{ max_workers = Max,
+                                workers = {Count, _} }) when Count >= Max ->
+  State;
+update_workers (State = #state{ loaded_data = {0, nil} }) ->
+  State;
+update_workers (State = #state{ data = undefined }) ->
+  State;
+update_workers (State = #state{ workers = Workers,
+                                loaded_data = Loaded,
+                                loaded_data_size = LoadedSize,
+                                data = Data }) ->
+  {File, Model, Loaded0} = gb_trees:take_smallest(Loaded),
+  {ok, Pid} = models_wrk_sup:start_worker([{model, Model}, {data, Data}]),
+  Workers0 = gb_trees:insert(Pid, File, Workers),
+  LoadedSize0 = LoadedSize - size(term_to_binary(Model)),
+  update_workers(State#state{ workers = Workers0,
+                              loaded_data = Loaded0,
+                              loaded_data_size = LoadedSize0 }).
+
+%---------------------------------------------------------------------
+
+add_stats (File, Perf, State = #state{ best_model  = undefined,
+                                       worst_model = undefined }) ->
+  add_stats(File, Perf, State#state{ best_model = {File, Perf},
+                                     worst_model = {File, Perf} });
+add_stats (File, Perf, State = #state{ good_models = Good,
+                                       bad_models  = Bad,
+                                       best_model  = {BF, BP},
+                                       worst_model = {WF, WP} }) ->
+  {Good0, Bad0} = case Perf > 0 of
+                    true -> {Good + 1, Bad};
+                    _    -> {Bad + 1, Good}
+                  end,
+  BestModel0 = case Perf > BP of
+                 true -> {File, Perf};
+                 _    -> {BF, BP}
+               end,
+  WorstModel0 = case Perf < WP of
+                  true -> {File, Perf};
+                  _    -> {WF, WP}
+                end,
+  State#state{ good_models = Good0,
+               bad_models = Bad0,
+               best_model = BestModel0,
+               worst_model = WorstModel0 }.
+
+%---------------------------------------------------------------------
+
+run_test () ->
+  ?LOG("==== APP RUN TEST STARTED ===="),
+  application:start(models),
+  models_srv:set_data_file("example.csv"),
+  models_srv:add_models("/tmp/models/*"),
+  timer:sleep(4000),
+  ?LOG("==== APP RUN TEST DONE ===="),
+  ok.
