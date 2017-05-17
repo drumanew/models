@@ -1,9 +1,7 @@
 -module (danalys).
 -compile(export_all).
 
--define (LOG (F, A),
-         io:format(standard_error, "[~s:~b] " ++ F ++ "~n", [?MODULE, ?LINE | A])).
--define (LOG (What), ?LOG(What, [])).
+-include ("log.hrl").
 
 read_data (Filename) ->
   {ok, Binary} = file:read_file(Filename),
