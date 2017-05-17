@@ -34,7 +34,7 @@
           code_change/3]).
 
 -define (MAX_MEM_SIZE_DEF, 10*1024*1024). %% 100 MBytes
--define (MAX_WORKERS_DEF, 10).
+-define (MAX_WORKERS_DEF, 100).
 
 -record(state, { datafile,
                  data,
@@ -195,8 +195,21 @@ handle_call ({add_models, Files},
 handle_call (get_stats, _From, State = #state{ good_models = Good,
                                                bad_models = Bad,
                                                best_model = Best,
-                                               worst_model = Worst }) ->
-  Reply = [{good, Good}, {bad, Bad}, {best, Best}, {worst, Worst}],
+                                               worst_model = Worst,
+                                               pending_files = PF,
+                                               pending_dirs = PD,
+                                               loaded_data = Loaded,
+                                               workers = Workers }) ->
+  Pending = gb_trees:keys(Loaded),
+  Unsheduled = gb_sets:to_list(gb_sets:union(PD, PF)),
+  Processing = gb_trees:values(Workers),
+  Reply = [{good, Good},
+           {bad, Bad},
+           {best, Best},
+           {worst, Worst},
+           {pending, Pending},
+           {processing, Processing},
+           {unsheduled, Unsheduled}],
   {reply, Reply, State};
 handle_call ({get_stats, good}, _From, State = #state{ good_models = Good }) ->
   {reply, Good, State};
@@ -206,6 +219,16 @@ handle_call ({get_stats, best}, _From, State = #state{ best_model = Best }) ->
   {reply, Best, State};
 handle_call ({get_stats, worst}, _From, State = #state{ worst_model = Worst }) ->
   {reply, Worst, State};
+handle_call ({get_stats, pending}, _From, State = #state{ loaded_data = Loaded }) ->
+  Pending = gb_trees:keys(Loaded),
+  {reply, Pending, State};
+handle_call ({get_stats, unsheduled}, _From, State = #state{ pending_files = PF,
+                                                             pending_dirs = PD }) ->
+  Unsheduled = gb_sets:to_list(gb_sets:union(PD, PF)),
+  {reply, Unsheduled, State};
+handle_call ({get_stats, processing}, _From, State = #state{ workers = Workers }) ->
+  Processing = gb_trees:values(Workers),
+  {reply, Processing, State};
 handle_call ({get_stats, _}, _From, State) ->
   {reply, undefined, State};
 %---------------------------------------------------------------------
