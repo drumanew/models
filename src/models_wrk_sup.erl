@@ -1,4 +1,4 @@
--module (models_sup).
+-module (models_wrk_sup).
 -behaviour (supervisor).
 
 -export ([start_link/0]).
@@ -16,19 +16,13 @@ start_link () ->
 %%%===================================================================
 
 init ([]) ->
-  Procs = [{models_wrk_sup,
-            {models_wrk_sup, start_link, []},
-            permanent,
-            infinity,
-            supervisor,
-            [models_wrk_sup]},
-           {models_srv,
-            {models_srv, start_link, []},
-            permanent,
-            1000,
-            worker,
-            [models_srv]}],
-  {ok, {{one_for_one, 1, 5}, Procs}}.
+  ChildSpecs = [{models_wrk,
+                 {models_wrk, start_link, []},
+                 temporary,
+                 2000,
+                 worker,
+                 [models_wrk]}],
+  {ok, {{simple_one_for_one, 1, 5}, ChildSpecs}}.
 
 %%%===================================================================
 %%% Internal functions
