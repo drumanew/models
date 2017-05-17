@@ -17,7 +17,11 @@
 
           add_models_dir/1,
           add_model/1,
-          add_models/1]).
+          add_models/1,
+
+          get_stats/0,
+          get_stats/1,
+          clear_stats/0]).
 
 -export ([run_test/0]).
 
@@ -114,6 +118,17 @@ add_models (WildCard) when is_list(WildCard) ->
   Files = gb_sets:from_list(filelib:wildcard(WildCard)),
   gen_server:call(?MODULE, {add_models, Files}).
 
+%---------------------------------------------------------------------
+
+get_stats () ->
+  gen_server:call(?MODULE, get_stats).
+
+get_stats (Stat) ->
+  gen_server:call(?MODULE, {get_stats, Stat}).
+
+clear_stats () ->
+  gen_server:call(?MODULE, clear_stats).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -175,6 +190,24 @@ handle_call ({add_models, Files},
   State0 = State#state{ pending_files = gb_sets:union(Files, PF) },
   {reply, ok, State0};
 
+%---------------------------------------------------------------------
+
+handle_call (get_stats, _From, State = #state{ good_models = Good,
+                                               bad_models = Bad,
+                                               best_model = Best,
+                                               worst_model = Worst }) ->
+  Reply = [{good, Good}, {bad, Bad}, {best, Best}, {worst, Worst}],
+  {reply, Reply, State};
+handle_call ({get_stats, good}, _From, State = #state{ good_models = Good }) ->
+  {reply, Good, State};
+handle_call ({get_stats, bad}, _From, State = #state{ bad_models = Bad }) ->
+  {reply, Bad, State};
+handle_call ({get_stats, best}, _From, State = #state{ best_model = Best }) ->
+  {reply, Best, State};
+handle_call ({get_stats, worst}, _From, State = #state{ worst_model = Worst }) ->
+  {reply, Worst, State};
+handle_call ({get_stats, _}, _From, State) ->
+  {reply, undefined, State};
 %---------------------------------------------------------------------
 
 handle_call (_Request, _From, State) ->
@@ -323,5 +356,6 @@ run_test () ->
   models_srv:set_data_file("example.csv"),
   models_srv:add_models("/tmp/models/*"),
   timer:sleep(4000),
+  ?LOG("stats: ~p", [models_srv:get_stats()]),
   ?LOG("==== APP RUN TEST DONE ===="),
   ok.
